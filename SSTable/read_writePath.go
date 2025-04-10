@@ -13,8 +13,9 @@ import (
 
 // Entry represents a key-value pair in the SSTable
 type Entry struct {
-	Key   string
-	Value string
+	Key            string
+	Value          string
+	SequenceNumber uint64
 }
 
 // DataBlock is a sorted block of key-value entries
@@ -29,6 +30,7 @@ func (db *DataBlock) Encode() []byte {
 		buf.Write([]byte(entry.Key))
 		binary.Write(buf, binary.LittleEndian, int32(len(entry.Value)))
 		buf.Write([]byte(entry.Value))
+		binary.Write(buf, binary.LittleEndian, entry.SequenceNumber)
 	}
 	return buf.Bytes()
 }
@@ -118,17 +120,16 @@ func getNextSSTableIndex(baseFilename string) int {
 	}
 	return maxIndex + 1
 }
-
-func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesPerSSTable int) error {
+func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesPerSSTable int, startSeq uint64) (uint64, error) {
 	// Sort entries by key
+	fmt.Print("WriteSSTables function called. ")
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Key < entries[j].Key
 	})
 
-	// Get the next available SSTable index
 	sstableIndex := getNextSSTableIndex(baseFilename)
+	currSeq := startSeq
 
-	// Write SSTables in chunks
 	for i := 0; i < len(entries); i += entriesPerSSTable {
 		end := i + entriesPerSSTable
 		if end > len(entries) {
@@ -136,16 +137,22 @@ func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesP
 		}
 		subEntries := entries[i:end]
 
+		// Assign sequence numbers
+		for j := range subEntries {
+			subEntries[j].SequenceNumber = currSeq
+			currSeq++
+		}
+
 		filename := fmt.Sprintf("%s_%d.sst", baseFilename, sstableIndex)
 		err := writeSingleSSTable(filename, subEntries, blockSize)
 		if err != nil {
-			return err
+			return currSeq, err
 		}
 		sstableIndex++
 	}
-	return nil
-}
 
+	return currSeq, nil
+}
 func decodeDataBlock(data []byte) ([]Entry, error) {
 	var entries []Entry
 	buf := bytes.NewReader(data)
@@ -158,6 +165,7 @@ func decodeDataBlock(data []byte) ([]Entry, error) {
 		if _, err := buf.Read(keyBytes); err != nil {
 			return nil, err
 		}
+
 		var valLen int32
 		if err := binary.Read(buf, binary.LittleEndian, &valLen); err != nil {
 			return nil, err
@@ -166,7 +174,17 @@ func decodeDataBlock(data []byte) ([]Entry, error) {
 		if _, err := buf.Read(valBytes); err != nil {
 			return nil, err
 		}
-		entries = append(entries, Entry{Key: string(keyBytes), Value: string(valBytes)})
+
+		var seqNum uint64
+		if err := binary.Read(buf, binary.LittleEndian, &seqNum); err != nil {
+			return nil, err
+		}
+
+		entries = append(entries, Entry{
+			Key:            string(keyBytes),
+			Value:          string(valBytes),
+			SequenceNumber: seqNum,
+		})
 	}
 	return entries, nil
 }
@@ -239,10 +257,10 @@ func ReadAllTables(baseFilename string) ([]Entry, error) {
 	return allEntries, nil
 }
 
-func ReadValueByKey(baseFilename string, key string) (string, bool, error) {
+func ReadValueByKey(baseFilename string, key string) (Entry, bool, error) {
 	files, err := ioutil.ReadDir(".")
 	if err != nil {
-		return "", false, err
+		return Entry{}, false, err
 	}
 
 	pattern := fmt.Sprintf(`^%s_(\d+)\.sst$`, baseFilename)
@@ -255,7 +273,7 @@ func ReadValueByKey(baseFilename string, key string) (string, bool, error) {
 
 		data, err := os.ReadFile(file.Name())
 		if err != nil {
-			return "", false, err
+			return Entry{}, false, err
 		}
 
 		if len(data) < 8 {
@@ -294,14 +312,15 @@ func ReadValueByKey(baseFilename string, key string) (string, bool, error) {
 			blockData := data[start : end-4] // exclude checksum
 			entries, err := decodeDataBlock(blockData)
 			if err != nil {
-				return "", false, err
+				return Entry{}, false, err
 			}
 			for _, entry := range entries {
 				if entry.Key == key {
-					return entry.Value, true, nil
+					return entry, true, nil
 				}
 			}
+
 		}
 	}
-	return "", false, nil
+	return Entry{}, false, nil
 }
