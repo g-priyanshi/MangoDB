@@ -58,7 +58,7 @@ func (db *DB) Delete(key string) error {
 
 func (db *DB) Flush() error {
 	fmt.Println("Flushing memtable to SSTable...")
-	data := db.memtable.GetAll()
+	// data := db.memtable.GetAll()
 
 	// 📝 Assume this is your hook into existing SSTable implementation
 	// SaveToSSTable(data)
