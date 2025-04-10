@@ -2,31 +2,35 @@ package main
 
 import (
 	"fmt"
-	"mykvstore/kvstore"
+	"log"
+	"MangoDB/internal" 
 )
 
 func main() {
-	db := kvstore.NewKVStore()
-
-	db.Put("apple", "fruit")
-	db.Put("zebra", "animal")
-	db.Put("ball", "toy")
-	db.Put("pen", "stationery")
-	db.Put("google", "company") // triggers flush
-	db.Put("mango", "fruit")
-
-	fmt.Println("Get apple:", safeGet(db, "apple"))
-	fmt.Println("Get zebra:", safeGet(db, "zebra"))
-
-	db.Delete("zebra")
-	fmt.Println("Deleted zebra.")
-	fmt.Println("Get zebra:", safeGet(db, "zebra"))
-}
-
-func safeGet(db *kvstore.KVStore, key string) string {
-	val, ok := db.Get(key)
-	if ok {
-		return val
+	db, err := internal.NewDB("wal.log")
+	if err != nil {
+		log.Fatal(err)
 	}
-	return "<not found>"
+
+	db.Put("name", "Alice")
+	db.Put("city", "Wonderland")
+
+	val, found := db.Get("name")
+	if found {
+		fmt.Println("GET name:", val)
+	} else {
+		fmt.Println("Key not found")
+	}
+
+	db.Delete("city")
+
+	_, found = db.Get("city")
+	if !found {
+		fmt.Println("city successfully deleted")
+	}
+
+	// Force flush
+	for i := 0; i < 1000; i++ {
+		db.Put(fmt.Sprintf("key%d", i), "value")
+	}
 }
