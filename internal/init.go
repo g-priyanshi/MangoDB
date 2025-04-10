@@ -1,10 +1,14 @@
 package internal
 
-import "fmt"
+import (
+	sstable "MangoDB/SSTable"
+	"fmt"
+)
 
 type DB struct {
 	memtable *SkipList
 	wal      *WAL
+	seq      uint64 // ✅ Sequence number for MVCC / snapshotting
 }
 
 func NewDB(walPath string) (*DB, error) {
@@ -17,6 +21,7 @@ func NewDB(walPath string) (*DB, error) {
 	db := &DB{
 		memtable: memtable,
 		wal:      wal,
+		seq:      0, // ✅ Start sequence from 0; can be loaded from snapshot later
 	}
 
 	// Load from WAL into memtable
@@ -28,7 +33,9 @@ func NewDB(walPath string) (*DB, error) {
 }
 
 func (db *DB) Put(key, value string) error {
-	err := db.wal.Append("PUT", key, value)
+	db.seq++ // ✅ Increment sequence number
+
+	err := db.wal.Append("PUT", key, value, db.seq) // ✅ Pass seq to WAL
 	if err != nil {
 		return err
 	}
@@ -48,7 +55,9 @@ func (db *DB) Get(key string) (string, bool) {
 }
 
 func (db *DB) Delete(key string) error {
-	err := db.wal.Append("DEL", key, "")
+	db.seq++ // ✅ Increment sequence number
+
+	err := db.wal.Append("DEL", key, "", db.seq) // ✅ Pass seq to WAL
 	if err != nil {
 		return err
 	}
@@ -58,9 +67,24 @@ func (db *DB) Delete(key string) error {
 
 func (db *DB) Flush() error {
 	fmt.Println("Flushing memtable to SSTable...")
-	// data := db.memtable.GetAll()
+	dataMap := db.memtable.GetAll()
+	entries := make([]sstable.Entry, 0, len(dataMap))
+	for k, v := range dataMap {
+		entries = append(entries, sstable.Entry{
+			Key:   k,
+			Value: v,
+			// SequenceNumber will be set by WriteSSTables
+		})
+	}
 
-	// 📝 Assume this is your hook into existing SSTable implementation
+	// Sort entries inside WriteSSTables
+	newSeq, err := sstable.WriteSSTables("sstable", entries, 50, 50, db.seq)
+	if err != nil {
+		return err
+	}
+
+	db.seq = newSeq
+	// 📝 Hook into your SSTable implementation
 	// SaveToSSTable(data)
 
 	db.memtable.Reset()
