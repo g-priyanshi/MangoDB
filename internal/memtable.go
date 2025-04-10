@@ -7,7 +7,7 @@ import (
 
 const maxLevel = 6
 const p = 0.5
-const memtableLimit = 1000 // max entries before flush
+const memtableLimit = 50 // max entries before flush
 
 type Node struct {
 	key     string
