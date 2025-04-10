@@ -7,8 +7,11 @@ import (
 	"strings"
 )
 
+const fsyncThreshold = 50
+
 type WAL struct {
-	file *os.File
+	file       *os.File
+	writeCount int
 }
 
 func NewWAL(filepath string) (*WAL, error) {
@@ -16,13 +19,26 @@ func NewWAL(filepath string) (*WAL, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WAL{file: f}, nil
+	return &WAL{file: f, writeCount: 0}, nil
 }
 
-func (w *WAL) Append(op, key, value string) error {
-	entry := fmt.Sprintf("%s|%s|%s\n", op, key, value)
+// ✅ Modified to accept seq
+func (w *WAL) Append(op, key, value string, seq uint64) error {
+	entry := fmt.Sprintf("%d|%s|%s|%s\n", seq, op, key, value) // <seq>|<op>|<key>|<value>
 	_, err := w.file.WriteString(entry)
-	return err
+	if err != nil {
+		return err
+	}
+
+	w.writeCount++
+	if w.writeCount >= fsyncThreshold {
+		err = w.file.Sync()
+		if err != nil {
+			return err
+		}
+		w.writeCount = 0
+	}
+	return nil
 }
 
 func (w *WAL) Load(memtable *SkipList) error {
@@ -30,12 +46,17 @@ func (w *WAL) Load(memtable *SkipList) error {
 	scanner := bufio.NewScanner(w.file)
 	for scanner.Scan() {
 		parts := strings.Split(scanner.Text(), "|")
-		if len(parts) >= 2 {
-			switch parts[0] {
+		if len(parts) >= 4 {
+			// parts[0] = seq (can ignore or use later)
+			op := parts[1]
+			key := parts[2]
+			value := parts[3]
+
+			switch op {
 			case "PUT":
-				memtable.Insert(parts[1], parts[2])
+				memtable.Insert(key, value)
 			case "DEL":
-				memtable.Delete(parts[1])
+				memtable.Delete(key)
 			}
 		}
 	}
@@ -53,5 +74,6 @@ func (w *WAL) Reset() error {
 		return err
 	}
 	w.file = f
+	w.writeCount = 0
 	return nil
 }
