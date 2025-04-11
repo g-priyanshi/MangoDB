@@ -11,7 +11,6 @@ import (
 	"sort"
 )
 
-
 type Entry struct {
 	Key            string
 	Value          string
@@ -50,8 +49,6 @@ func (fb *FilterBlock) Add(key string) {
 func (fb *FilterBlock) MightContain(key string) bool {
 	return fb.Filter[key]
 }
-
-
 
 func getSSTableFilename(index int) string {
 	return "sstable_" + fmt.Sprintf("%d", index) + ".sst"
@@ -322,6 +319,7 @@ func ReadValueByKey(baseFilename string, key string) (Entry, bool, error) {
 			index = append(index, IndexEntry{Key: string(keyBytes), Offset: offset})
 		}
 
+
 		for i, idx := range index {
 			start := idx.Offset
 			var end int64
@@ -330,7 +328,7 @@ func ReadValueByKey(baseFilename string, key string) (Entry, bool, error) {
 			} else {
 				end = int64(indexOffset)
 			}
-			blockData := data[start : end-4] 
+			blockData := data[start : end-4]
 			entries, err := decodeDataBlock(blockData)
 			if err != nil {
 				return Entry{}, false, err
