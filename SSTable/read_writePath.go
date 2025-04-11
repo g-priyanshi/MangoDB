@@ -11,14 +11,13 @@ import (
 	"sort"
 )
 
-// Entry represents a key-value pair in the SSTable
+
 type Entry struct {
 	Key            string
 	Value          string
 	SequenceNumber uint64
 }
 
-// DataBlock is a sorted block of key-value entries
 type DataBlock struct {
 	Entries []Entry
 }
@@ -35,13 +34,11 @@ func (db *DataBlock) Encode() []byte {
 	return buf.Bytes()
 }
 
-// IndexEntry points to the start of a data block in the file
 type IndexEntry struct {
 	Key    string
 	Offset int64
 }
 
-// FilterBlock - a basic Bloom filter for demonstration (not optimal)
 type FilterBlock struct {
 	Filter map[string]bool
 }
@@ -54,7 +51,7 @@ func (fb *FilterBlock) MightContain(key string) bool {
 	return fb.Filter[key]
 }
 
-// SSTableWriter writes sorted key-value pairs to an SSTable
+
 
 func getSSTableFilename(index int) string {
 	return "sstable_" + fmt.Sprintf("%d", index) + ".sst"
@@ -116,10 +113,8 @@ func writeSingleSSTable(filename string, entries []Entry, blockSize int) error {
 		return err
 	}
 
-	// Close file before renaming
 	file.Close()
 
-	// Rename temp file to final filename
 	err = os.Rename(tempFilename, filename)
 	if err != nil {
 		return err
@@ -148,15 +143,15 @@ func getNextSSTableIndex(baseFilename string) int {
 	}
 	return maxIndex + 1
 }
-func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesPerSSTable int, startSeq uint64) (uint64, error) {
-	// Sort entries by key
-	fmt.Print("WriteSSTables function called. ")
+func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesPerSSTable int, startSeq uint64) ([][]Entry, uint64, error) {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Key < entries[j].Key
 	})
 
 	sstableIndex := getNextSSTableIndex(baseFilename)
 	currSeq := startSeq
+
+	var result [][]Entry
 
 	for i := 0; i < len(entries); i += entriesPerSSTable {
 		end := i + entriesPerSSTable
@@ -165,7 +160,6 @@ func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesP
 		}
 		subEntries := entries[i:end]
 
-		// Assign sequence numbers
 		for j := range subEntries {
 			subEntries[j].SequenceNumber = currSeq
 			currSeq++
@@ -174,13 +168,16 @@ func WriteSSTables(baseFilename string, entries []Entry, blockSize int, entriesP
 		filename := fmt.Sprintf("%s_%d.sst", baseFilename, sstableIndex)
 		err := writeSingleSSTable(filename, subEntries, blockSize)
 		if err != nil {
-			return currSeq, err
+			return nil, currSeq, err
 		}
+
+		result = append(result, subEntries)
 		sstableIndex++
 	}
 
-	return currSeq, nil
+	return result, currSeq, nil
 }
+
 func decodeDataBlock(data []byte) ([]Entry, error) {
 	var entries []Entry
 	buf := bytes.NewReader(data)
@@ -238,14 +235,12 @@ func ReadAllTables(baseFilename string) ([]Entry, error) {
 			return nil, err
 		}
 
-		// Read footer (last 8 bytes)
 		if len(data) < 8 {
 			continue
 		}
 		indexOffset := binary.LittleEndian.Uint64(data[len(data)-8:])
 		indexData := data[indexOffset : len(data)-8]
 
-		// Read index
 		var index []IndexEntry
 		buf := bytes.NewReader(indexData)
 		for buf.Len() > 0 {
@@ -264,7 +259,6 @@ func ReadAllTables(baseFilename string) ([]Entry, error) {
 			index = append(index, IndexEntry{Key: string(key), Offset: offset})
 		}
 
-		// Read data blocks
 		for i, idx := range index {
 			start := idx.Offset
 			var end int64
@@ -273,7 +267,7 @@ func ReadAllTables(baseFilename string) ([]Entry, error) {
 			} else {
 				end = int64(indexOffset)
 			}
-			blockData := data[start : end-4] // exclude checksum
+			blockData := data[start : end-4] 
 			entries, err := decodeDataBlock(blockData)
 			if err != nil {
 				return nil, err
@@ -328,7 +322,6 @@ func ReadValueByKey(baseFilename string, key string) (Entry, bool, error) {
 			index = append(index, IndexEntry{Key: string(keyBytes), Offset: offset})
 		}
 
-		// Binary search in index for potential block
 		for i, idx := range index {
 			start := idx.Offset
 			var end int64
@@ -337,7 +330,7 @@ func ReadValueByKey(baseFilename string, key string) (Entry, bool, error) {
 			} else {
 				end = int64(indexOffset)
 			}
-			blockData := data[start : end-4] // exclude checksum
+			blockData := data[start : end-4] 
 			entries, err := decodeDataBlock(blockData)
 			if err != nil {
 				return Entry{}, false, err
