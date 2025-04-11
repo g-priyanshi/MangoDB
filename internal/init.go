@@ -22,10 +22,10 @@ func NewDB(walPath string) (*DB, error) {
 	db := &DB{
 		memtable: memtable,
 		wal:      wal,
-		seq:      0, // ✅ Start sequence from 0; can be loaded from snapshot later
+		seq:      0, 
 	}
 
-	// Load from WAL into memtable
+	
 	err = wal.Load(memtable)
 	if err != nil {
 		return nil, err
@@ -34,9 +34,9 @@ func NewDB(walPath string) (*DB, error) {
 }
 
 func (db *DB) Put(key, value string) error {
-	db.seq++ // ✅ Increment sequence number
+	db.seq++
 
-	err := db.wal.Append("PUT", key, value, db.seq) // ✅ Pass seq to WAL
+	err := db.wal.Append("PUT", key, value, db.seq) 
 	if err != nil {
 		return err
 	}
@@ -56,9 +56,9 @@ func (db *DB) Get(key string) (string, bool) {
 }
 
 func (db *DB) Delete(key string) error {
-	db.seq++ // ✅ Increment sequence number
+	db.seq++ 
 
-	err := db.wal.Append("DEL", key, "", db.seq) // ✅ Pass seq to WAL
+	err := db.wal.Append("DEL", key, "", db.seq) 
 	if err != nil {
 		return err
 	}
@@ -74,29 +74,31 @@ func (db *DB) Flush() error {
 		entries = append(entries, sstable.Entry{
 			Key:   k,
 			Value: v,
-			// SequenceNumber will be set by WriteSSTables
+			
 		})
 	}
 
-	// Sort entries inside WriteSSTables
-	newSeq, err := sstable.WriteSSTables("sstable", entries, 50, 50, db.seq)
+	
+	filenames, newSeq, err := sstable.WriteSSTables("sstable", entries, 50, 50, db.seq)
 	if err != nil {
 		return err
 	}
-
+	fmt.Println("Flushed SSTables:", filenames)
 	db.seq = newSeq
-	// 📝 Hook into your SSTable implementation
-	// SaveToSSTable(data)
+
+	
 
 	db.memtable.Reset()
 	return db.wal.Reset()
 }
 
 func (db *DB) CreateSnapshot() *Snapshot {
-	return &Snapshot{
-		Memtable: db.memtable.Clone(), // implement Clone() in SkipList
-		SSTables: db.sstables,         // reuse existing SSTable entries
+
+
+	snapshot := &Snapshot{
 		Sequence: db.seq,
-		Released: false,
+		Memtable: db.memtable.Clone(), 
+		SSTables: db.sstables,         
 	}
+	return snapshot
 }
