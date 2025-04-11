@@ -12,6 +12,10 @@ type DB struct {
 	sstables [][]sstable.Entry
 }
 
+func (db *DB) GetMemtable() *SkipList {
+	return db.memtable
+}
+
 func NewDB(walPath string) (*DB, error) {
 	wal, err := NewWAL(walPath)
 	if err != nil {
@@ -25,7 +29,7 @@ func NewDB(walPath string) (*DB, error) {
 		seq:      0, 
 	}
 
-	
+
 	err = wal.Load(memtable)
 	if err != nil {
 		return nil, err
@@ -34,9 +38,9 @@ func NewDB(walPath string) (*DB, error) {
 }
 
 func (db *DB) Put(key, value string) error {
-	db.seq++
+	db.seq++ 
 
-	err := db.wal.Append("PUT", key, value, db.seq) 
+	err := db.wal.Append("PUT", key, value, db.seq)
 	if err != nil {
 		return err
 	}
@@ -56,7 +60,7 @@ func (db *DB) Get(key string) (string, bool) {
 }
 
 func (db *DB) Delete(key string) error {
-	db.seq++ 
+	db.seq++
 
 	err := db.wal.Append("DEL", key, "", db.seq) 
 	if err != nil {
@@ -74,19 +78,15 @@ func (db *DB) Flush() error {
 		entries = append(entries, sstable.Entry{
 			Key:   k,
 			Value: v,
-			
 		})
 	}
 
-	
 	filenames, newSeq, err := sstable.WriteSSTables("sstable", entries, 50, 50, db.seq)
 	if err != nil {
 		return err
 	}
 	fmt.Println("Flushed SSTables:", filenames)
 	db.seq = newSeq
-
-	
 
 	db.memtable.Reset()
 	return db.wal.Reset()
@@ -98,7 +98,7 @@ func (db *DB) CreateSnapshot() *Snapshot {
 	snapshot := &Snapshot{
 		Sequence: db.seq,
 		Memtable: db.memtable.Clone(), 
-		SSTables: db.sstables,         
+		SSTables: db.sstables,        
 	}
 	return snapshot
 }
