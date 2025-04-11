@@ -1,92 +1,30 @@
-package internal
-
-import (
-	sstable "MangoDB/SSTable"
-	"fmt"
-)
-
-type DB struct {
-	memtable *SkipList
-	wal      *WAL
-	seq      uint64 // ✅ Sequence number for MVCC / snapshotting
-}
-
-func NewDB(walPath string) (*DB, error) {
-	wal, err := NewWAL(walPath)
+db, err := NewDB("wal.log") // You can pick a name/path for the WAL file
 	if err != nil {
-		return nil, err
-	}
-	memtable := NewSkipList()
-
-	db := &DB{
-		memtable: memtable,
-		wal:      wal,
-		seq:      0, // ✅ Start sequence from 0; can be loaded from snapshot later
+		fmt.Println("Failed to initialize DB:", err)
+		return
 	}
 
-	// Load from WAL into memtable
-	err = wal.Load(memtable)
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
-}
+	// Insert a key-value pair
+	db.Set("foo", "bar")
 
-func (db *DB) Put(key, value string) error {
-	db.seq++ // ✅ Increment sequence number
+	// Create a snapshot
+	snap := db.CreateSnapshot()
 
-	err := db.wal.Append("PUT", key, value, db.seq) // ✅ Pass seq to WAL
-	if err != nil {
-		return err
-	}
-	db.memtable.Insert(key, value)
-
-	if db.memtable.IsFull() {
-		err := db.Flush()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (db *DB) Get(key string) (string, bool) {
-	return db.memtable.Search(key)
-}
-
-func (db *DB) Delete(key string) error {
-	db.seq++ // ✅ Increment sequence number
-
-	err := db.wal.Append("DEL", key, "", db.seq) // ✅ Pass seq to WAL
-	if err != nil {
-		return err
-	}
-	db.memtable.Delete(key)
-	return nil
-}
-
-func (db *DB) Flush() error {
-	fmt.Println("Flushing memtable to SSTable...")
-	dataMap := db.memtable.GetAll()
-	entries := make([]sstable.Entry, 0, len(dataMap))
-	for k, v := range dataMap {
-		entries = append(entries, sstable.Entry{
-			Key:   k,
-			Value: v,
-			// SequenceNumber will be set by WriteSSTables
-		})
+	// Query the snapshot
+	val, ok := snap.Get("foo")
+	if ok {
+		fmt.Println("Snapshot Get:", val)
+	} else {
+		fmt.Println("Key not found in snapshot.")
 	}
 
-	// Sort entries inside WriteSSTables
-	newSeq, err := sstable.WriteSSTables("sstable", entries, 50, 50, db.seq)
-	if err != nil {
-		return err
+	// Change DB after snapshot creation
+	db.Set("foo", "baz")
+
+	// Query snapshot again (should still return old value)
+	val, ok = snap.Get("foo")
+	if ok {
+		fmt.Println("Snapshot After DB Change:", val)
+	} else {
+		fmt.Println("Key not found in snapshot.")
 	}
-
-	db.seq = newSeq
-	// 📝 Hook into your SSTable implementation
-	// SaveToSSTable(data)
-
-	db.memtable.Reset()
-	return db.wal.Reset()
-}
