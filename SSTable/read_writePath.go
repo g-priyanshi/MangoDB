@@ -61,7 +61,8 @@ func getSSTableFilename(index int) string {
 }
 
 func writeSingleSSTable(filename string, entries []Entry, blockSize int) error {
-	file, err := os.Create(filename)
+	tempFilename := filename + ".tmp"
+	file, err := os.Create(tempFilename)
 	if err != nil {
 		return err
 	}
@@ -78,8 +79,14 @@ func writeSingleSSTable(filename string, entries []Entry, blockSize int) error {
 		if len(block.Entries) == blockSize || i == len(entries)-1 {
 			blockData := block.Encode()
 			checksum := crc32.ChecksumIEEE(blockData)
-			file.Write(blockData)
-			binary.Write(file, binary.LittleEndian, checksum)
+			_, err := file.Write(blockData)
+			if err != nil {
+				return err
+			}
+			err = binary.Write(file, binary.LittleEndian, checksum)
+			if err != nil {
+				return err
+			}
 			index = append(index, IndexEntry{Key: block.Entries[0].Key, Offset: offset})
 			offset += int64(len(blockData) + 4)
 			block.Entries = nil
@@ -88,14 +95,35 @@ func writeSingleSSTable(filename string, entries []Entry, blockSize int) error {
 
 	indexOffset := offset
 	for _, ie := range index {
-		binary.Write(file, binary.LittleEndian, int32(len(ie.Key)))
-		file.Write([]byte(ie.Key))
-		binary.Write(file, binary.LittleEndian, ie.Offset)
+		err := binary.Write(file, binary.LittleEndian, int32(len(ie.Key)))
+		if err != nil {
+			return err
+		}
+		_, err = file.Write([]byte(ie.Key))
+		if err != nil {
+			return err
+		}
+		err = binary.Write(file, binary.LittleEndian, ie.Offset)
+		if err != nil {
+			return err
+		}
 	}
 
 	footer := make([]byte, 8)
 	binary.LittleEndian.PutUint64(footer, uint64(indexOffset))
-	file.Write(footer)
+	_, err = file.Write(footer)
+	if err != nil {
+		return err
+	}
+
+	// Close file before renaming
+	file.Close()
+
+	// Rename temp file to final filename
+	err = os.Rename(tempFilename, filename)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
