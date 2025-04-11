@@ -22,9 +22,9 @@ func NewWAL(filepath string) (*WAL, error) {
 	return &WAL{file: f, writeCount: 0}, nil
 }
 
-// ✅ Modified to accept seq
+
 func (w *WAL) Append(op, key, value string, seq uint64) error {
-	entry := fmt.Sprintf("%d|%s|%s|%s\n", seq, op, key, value) // <seq>|<op>|<key>|<value>
+	entry := fmt.Sprintf("%d|%s|%s|%s\n", seq, op, key, value)
 	_, err := w.file.WriteString(entry)
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func (w *WAL) Load(memtable *SkipList) error {
 	for scanner.Scan() {
 		parts := strings.Split(scanner.Text(), "|")
 		if len(parts) >= 4 {
-			// parts[0] = seq (can ignore or use later)
+			
 			op := parts[1]
 			key := parts[2]
 			value := parts[3]
