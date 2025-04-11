@@ -2,7 +2,12 @@ package internal
 
 import (
 	sstable "MangoDB/SSTable"
+	"bufio"
+	"fmt"
 	"math/rand"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +21,11 @@ type Node struct {
 	forward []*Node
 }
 
+type Entry struct {
+	Key   string
+	Value string
+}
+
 type SkipList struct {
 	header *Node
 	level  int
@@ -27,6 +37,27 @@ type Snapshot struct {
 	SSTables [][]sstable.Entry // All sstable entry slices relevant at this seq
 	Sequence uint64
 	Released bool
+}
+type SkipListIterator struct {
+	current *Node
+}
+
+func (s *SkipList) Iterator() *SkipListIterator {
+	// s.head is assumed to be the dummy node; we start from head.next
+	return &SkipListIterator{current: s.header.forward[0]}
+}
+
+func (it *SkipListIterator) HasNext() bool {
+	return it.current != nil
+}
+
+func (it *SkipListIterator) Next() *Entry {
+	entry := &Entry{
+		Key:   it.current.key,
+		Value: it.current.value,
+	}
+	it.current = it.current.forward[0]
+	return entry
 }
 
 func (s *Snapshot) Get(key string) (string, bool) {
@@ -44,6 +75,65 @@ func (s *Snapshot) Get(key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (s *Snapshot) SaveToFile(filePath string) error {
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+
+	// Write the sequence number
+	fmt.Fprintf(writer, "SEQ|%d\n", s.Sequence)
+
+	// Iterate over Memtable entries
+	iter := s.Memtable.Iterator()
+	for iter.HasNext() {
+		entry := iter.Next()
+		fmt.Fprintf(writer, "PUT|%s|%s\n", entry.Key, entry.Value)
+	}
+
+	return writer.Flush()
+}
+
+func RestoreSnapshot(filePath string) (*Snapshot, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	memtable := NewSkipList()
+	var seq uint64
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, "|")
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch parts[0] {
+		case "SEQ":
+			s, _ := strconv.ParseUint(parts[1], 10, 64)
+			seq = s
+		case "PUT":
+			memtable.Insert(parts[1], parts[2])
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return &Snapshot{
+		Memtable: memtable,
+		Sequence: seq,
+	}, nil
 }
 
 func newNode(level int, key, value string) *Node {
