@@ -13,7 +13,7 @@ import (
 
 const maxLevel = 6
 const p = 0.5
-const memtableLimit = 50
+const memtableLimit = 50 
 
 type Node struct {
 	key     string
@@ -33,7 +33,7 @@ type SkipList struct {
 }
 
 type Snapshot struct {
-	Memtable *SkipList  
+	Memtable *SkipList         
 	SSTables [][]sstable.Entry 
 	Sequence uint64
 	Released bool
@@ -43,7 +43,7 @@ type SkipListIterator struct {
 }
 
 func (s *SkipList) Iterator() *SkipListIterator {
-
+	
 	return &SkipListIterator{current: s.header.forward[0]}
 }
 
@@ -87,7 +87,6 @@ func (s *Snapshot) SaveToFile(filePath string) error {
 
 	fmt.Fprintf(writer, "SEQ|%d\n", s.Sequence)
 
-	
 	iter := s.Memtable.Iterator()
 	for iter.HasNext() {
 		entry := iter.Next()
