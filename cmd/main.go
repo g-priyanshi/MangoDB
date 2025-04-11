@@ -83,4 +83,59 @@ func main() {
 	// for k, v := range db2.memtable.GetAll() {
 	// 	fmt.Printf("%s = %s\n", k, v)
 	// }
+
+
+
+
+
+
+
+
+
+
+	
+	//SNAPSHOT USAGE
+	// db, err := internal.NewDB("wal.log")
+	// if err != nil {
+	// 	fmt.Println("Failed to initialize DB:", err)
+	// 	return
+	// }
+
+	// // Step 2: Insert initial data
+	// db.Put("foo", "bar")
+	// db.Put("baz", "qux")
+
+	// // Step 3: Create snapshot
+	// snapshot := db.CreateSnapshot()
+
+	// // Step 4: Save snapshot to file
+	// err = snapshot.SaveToFile("snapshot.dat")
+	// if err != nil {
+	// 	fmt.Println("Error saving snapshot:", err)
+	// 	return
+	// }
+	// fmt.Println("Snapshot saved successfully.")
+
+	// // Step 5: Mutate the DB after snapshot
+	// db.Put("foo", "new_value")
+	// db.Put("baz", "updated")
+
+	// // Step 6: Restore snapshot from file
+	// restoredSnapshot, err := internal.RestoreSnapshot("snapshot.dat")
+	// if err != nil {
+	// 	fmt.Println("Error restoring snapshot:", err)
+	// 	return
+	// }
+	// fmt.Println("Snapshot restored successfully.")
+
+	// // Step 7: Validate values from restored snapshot
+	// testKeys := []string{"foo", "baz"}
+	// for _, key := range testKeys {
+	// 	val, ok := restoredSnapshot.Get(key)
+	// 	if ok {
+	// 		fmt.Printf("Restored Snapshot Get %s: %s\n", key, val)
+	// 	} else {
+	// 		fmt.Printf("Key %s not found in restored snapshot.\n", key)
+	// 	}
+	// }
 }
