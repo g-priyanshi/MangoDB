@@ -13,7 +13,7 @@ import (
 
 const maxLevel = 6
 const p = 0.5
-const memtableLimit = 50 // max entries before flush
+const memtableLimit = 50
 
 type Node struct {
 	key     string
@@ -33,8 +33,8 @@ type SkipList struct {
 }
 
 type Snapshot struct {
-	Memtable *SkipList         // Snapshot of memtable at seq
-	SSTables [][]sstable.Entry // All sstable entry slices relevant at this seq
+	Memtable *SkipList  
+	SSTables [][]sstable.Entry 
 	Sequence uint64
 	Released bool
 }
@@ -43,7 +43,7 @@ type SkipListIterator struct {
 }
 
 func (s *SkipList) Iterator() *SkipListIterator {
-	// s.head is assumed to be the dummy node; we start from head.next
+
 	return &SkipListIterator{current: s.header.forward[0]}
 }
 
@@ -61,12 +61,11 @@ func (it *SkipListIterator) Next() *Entry {
 }
 
 func (s *Snapshot) Get(key string) (string, bool) {
-	// Search in memtable snapshot
+
 	if val, ok := s.Memtable.Get(key); ok {
 		return val.(string), true
 	}
 
-	// Search in SSTables
 	for _, level := range s.SSTables {
 		for _, entry := range level {
 			if entry.Key == key && entry.SequenceNumber <= s.Sequence {
@@ -86,14 +85,18 @@ func (s *Snapshot) SaveToFile(filePath string) error {
 
 	writer := bufio.NewWriter(file)
 
-	// Write the sequence number
 	fmt.Fprintf(writer, "SEQ|%d\n", s.Sequence)
 
-	// Iterate over Memtable entries
+	
 	iter := s.Memtable.Iterator()
 	for iter.HasNext() {
 		entry := iter.Next()
 		fmt.Fprintf(writer, "PUT|%s|%s\n", entry.Key, entry.Value)
+	}
+	for _, table := range s.SSTables {
+		for _, entry := range table {
+			fmt.Fprintf(writer, "SST|%s|%s\n", entry.Key, entry.Value)
+		}
 	}
 
 	return writer.Flush()
@@ -108,6 +111,10 @@ func RestoreSnapshot(filePath string) (*Snapshot, error) {
 
 	scanner := bufio.NewScanner(file)
 	memtable := NewSkipList()
+	var sstables [][]sstable.Entry
+	var currentSST []sstable.Entry
+
+	var inSST bool
 	var seq uint64
 
 	for scanner.Scan() {
@@ -119,10 +126,29 @@ func RestoreSnapshot(filePath string) (*Snapshot, error) {
 
 		switch parts[0] {
 		case "SEQ":
-			s, _ := strconv.ParseUint(parts[1], 10, 64)
-			seq = s
+			seq, _ = strconv.ParseUint(parts[1], 10, 64)
+
 		case "PUT":
+			if len(parts) < 3 {
+				continue
+			}
 			memtable.Insert(parts[1], parts[2])
+
+		case "SST_BEGIN":
+			currentSST = nil
+			inSST = true
+
+		case "SST":
+			if !inSST || len(parts) < 3 {
+				continue
+			}
+			currentSST = append(currentSST, sstable.Entry{Key: parts[1], Value: parts[2]})
+
+		case "SST_END":
+			if inSST {
+				sstables = append(sstables, currentSST)
+				inSST = false
+			}
 		}
 	}
 
@@ -132,6 +158,7 @@ func RestoreSnapshot(filePath string) (*Snapshot, error) {
 
 	return &Snapshot{
 		Memtable: memtable,
+		SSTables: sstables,
 		Sequence: seq,
 	}, nil
 }
