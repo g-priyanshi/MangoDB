@@ -1,6 +1,7 @@
 package internal
 
 import (
+	sstable "MangoDB/SSTable"
 	"math/rand"
 	"time"
 )
@@ -21,6 +22,30 @@ type SkipList struct {
 	size   int
 }
 
+type Snapshot struct {
+	Memtable *SkipList         // Snapshot of memtable at seq
+	SSTables [][]sstable.Entry // All sstable entry slices relevant at this seq
+	Sequence uint64
+	Released bool
+}
+
+func (s *Snapshot) Get(key string) (string, bool) {
+	// Search in memtable snapshot
+	if val, ok := s.Memtable.Get(key); ok {
+		return val.(string), true
+	}
+
+	// Search in SSTables
+	for _, level := range s.SSTables {
+		for _, entry := range level {
+			if entry.Key == key && entry.SequenceNumber <= s.Sequence {
+				return entry.Value, true
+			}
+		}
+	}
+	return "", false
+}
+
 func newNode(level int, key, value string) *Node {
 	return &Node{
 		key:     key,
@@ -36,6 +61,24 @@ func NewSkipList() *SkipList {
 		level:  0,
 		size:   0,
 	}
+}
+
+func (sl *SkipList) Clone() *SkipList {
+	clone := NewSkipList()
+	x := sl.header.forward[0]
+	for x != nil {
+		clone.Insert(x.key, x.value)
+		x = x.forward[0]
+	}
+	return clone
+}
+
+func (sl *SkipList) Get(key string) (interface{}, bool) {
+	val, ok := sl.Search(key)
+	if ok {
+		return val, true
+	}
+	return nil, false
 }
 
 func (sl *SkipList) randomLevel() int {
