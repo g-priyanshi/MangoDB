@@ -106,6 +106,7 @@ func main() {
 				fmt.Println("Usage: restore-snapshot <filename>")
 				continue
 			}
+			db.CreateSnapshot().SaveToFile("snapshot.dat")
 			_, err := internal.RestoreSnapshot(args[1])
 			if err != nil {
 				fmt.Println("Error restoring snapshot:", err)
